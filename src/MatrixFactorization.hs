@@ -11,15 +11,8 @@ import System.IO (hSetBuffering, stdout, BufferMode (NoBuffering))
 import Data.List (foldl')
 import qualified Bias as B
 
-type Item = Int -- Item id
-type User = Int  -- User id
-type Error = Double
-type Rating = Double
-type UserRatingMap = MM.MultiMap User Rating
-type ItemUserMap = MM.MultiMap Item User
-type ItemRatingMap = M.Map Item Rating
-type UserItemRatingMap = M.Map User ItemRatingMap
-type DataPoint = (User,Item,Rating)
+import Utils
+
 type Matrices = U.Vector Double -- fitted factor matrices P, Q^t stored in row-major order
 
 
@@ -27,30 +20,21 @@ type Matrices = U.Vector Double -- fitted factor matrices P, Q^t stored in row-m
 
 user Reader to encode config stuff like Matrices, BiasModel etc
 
-
-
 -}
- 
-type BiasModel = (Rating,              --avg rating,
-                  UserRatingMap,       --keys are users. values are ratings of those users
-                  ItemUserMap,         --keys are items. values are users who rated that item
-                  UserItemRatingMap)   --map contains all ratings to user item keys
 
 alpha = 0.01 -- initial learning rate
 lambda = 0.01 -- Tikhonov regularization paramater
-nr_iter = 1
+nr_iter = 2
 nFeatures = 10
-nUsers = 100
-nItems = 100
+nUsers = 943
+nItems = 1682
 fRange = [0..nFeatures-1]
-datasetSize = 100
-
+datasetSize = 80000
 
 -- | computes a prediction for rating of user u on item i based on the latent factor vectors
 predict :: Matrices -> BiasModel -> User -> Item -> Rating
 predict para biasModel user item = bias + sum [(para U.! (itemIndex item f)) * (para U.! (userIndex user f))| f <- fRange]
-                      where bias = B.predict mu urm ium uirm user item
-                            (mu,urm,ium,uirm) = biasModel
+                      where bias = B.predict biasModel user item
 
 -- retrieve the index of an latent item feature in the parameter vector
 itemIndex :: Item -> Int -> Int 
@@ -63,49 +47,34 @@ userIndex x f = nItems + ((x-1) * nFeatures) + f
 
 
 -- | computes the latent factor vectors for matrix factorixation
-model :: V.Vector DataPoint -> IO Matrices
+model :: DataSet -> IO Matrices
 model dataset = do 
-    let ium = itemUserMap dataset
-    let uirm = userItemRatingMap dataset
     let n = (nFeatures * nUsers) + (nFeatures * nItems)
     let matrices = U.replicate n (0.1::Double)
-    D.withVect (V.toList dataset) (runSGD matrices ium uirm (V.toList dataset))
-
-itemUserMap :: V.Vector DataPoint -> ItemUserMap
-itemUserMap v = V.foldl' (\acc (u,i,r) -> MM.insert i u acc) MM.empty v
-
-userItemRatingMap :: V.Vector DataPoint -> UserItemRatingMap
-userItemRatingMap v = V.foldl' ins2 M.empty v
-
-ins2 :: UserItemRatingMap -> DataPoint -> UserItemRatingMap
-ins2 acc (u, i, r)= M.insertWith (ins3 i r) u (M.singleton i r) acc
-
-ins3 :: Item -> Rating -> ItemRatingMap -> ItemRatingMap -> ItemRatingMap
-ins3 i r _ old = M.insert i r old
-
-
+    D.withVect (V.toList dataset) (runSGD matrices dataset)
 
 
 -- | SGD optimizer
-runSGD :: Matrices -> ItemUserMap -> UserItemRatingMap -> [DataPoint] -> D.Dataset DataPoint -> IO Matrices
-runSGD matrices ium uirm all d = do
+runSGD :: Matrices -> DataSet -> D.Dataset DataPoint -> IO Matrices
+runSGD matrices all d = do
   let sgdArgs = S.sgdArgsDefault { S.iterNum = nr_iter, S.gain0=alpha }
-  --let uim = userItemMap all
-  --let avg = mu all
-  let bm = B.model (V.fromList all)
+  let bm = B.model all
   S.sgd sgdArgs (notify bm all) (grad bm) d matrices 
 
 -- Notification run by the SGD function every parameters update.
-notify :: BiasModel -> [DataPoint] -> Matrices -> Int -> IO ()
-notify biasModel dataPoint matrices k = putStr ("\n" ++ (show k) ++ ("\t") ++ (show (goal biasModel matrices dataPoint)))
+notify :: BiasModel -> DataSet -> Matrices -> Int -> IO ()
+notify biasModel all matrices k = putStr ("\n" ++
+                                          (show k) ++
+                                          ("\t") ++
+                                          (show (goal biasModel matrices all)))
 
 -- cost function returning the squared sum of the errors.
-goal :: BiasModel -> Matrices -> [DataPoint] -> Error
-goal biasModel matrices xs = sum (map (\x -> err2 x) xs)
+goal :: BiasModel -> Matrices -> DataSet -> Error
+goal biasModel matrices all = V.sum (V.map (\x -> err2 x) all)
   where err2 (u, i, r) = (r - mu - (sum [el i u f | f <- fRange]))^2
         el i u f = matrices U.! (itemIndex i f) * (matrices U.! ((userIndex u f)))
         --bias u i = B.predict mu urm ium uirm u i
-        (mu,urm,ium,uirm) = biasModel
+        (mu,_,_,_) = biasModel
 
 -- gradient descent step
 grad :: BiasModel -> Matrices -> DataPoint -> S.Grad
@@ -134,6 +103,6 @@ gradQ biasModel matrices dataPoint = do
 errorAt :: BiasModel -> Matrices -> DataPoint -> Error 
 errorAt biasModel matrices (user,item,rating) = rating - bias - innerProd
   where innerProd = (sum [(matrices U.! (itemIndex item f)) * (matrices U.! (userIndex user f))| f <- fRange])
-        bias = B.predict mu urm ium uirm user item
-        (mu,urm,ium,uirm) = biasModel
+        bias = B.predict biasModel user item
+        --(mu,urm,ium,uirm) = biasModel
         
