@@ -1,7 +1,7 @@
 module Bias (model, predict) where
 
 import qualified Data.MultiMap as MM
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 import qualified Data.Vector as V
 
 import Utils

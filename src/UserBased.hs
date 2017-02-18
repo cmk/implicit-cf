@@ -1,21 +1,44 @@
 module UserBased where
 
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 import Data.List
 
 import Utils
 
-  
+{-
+doWork :: [Record] -> IO ()
+doWork csv = let
+  users = map avg $ M.elems $ M.fromListWith combine $ map parseToTuple $ tail $ init csv
+  user = avg $ (,) (-1) $ M.fromList [(8,2),(48,1)]
+  closests = take 30 $ UB.sortNeighbours UB.cosine user users
+  recs = UB.recommend UB.cosine user users
+  r = UB.ratings $ UB.findUser (snd $ head closests) users :: ItemRatingMap
+  in do
+    --print users
+    print closests
+    print recs
+    print user
+    print r
+-}
+
+avg :: UserRatings -> UserRatings
+avg (user,ratings) = let
+  sum = M.foldl' (+) 0.0 ratings
+  ratings' = M.map (\r -> r/sum) ratings
+  in (user, ratings')
+
+
+
 -- | Return just the item ratings for the given sample
-ratings :: UserRatings -> UserRatingMap
-ratings (UserRatings a m) = m
+ratings :: UserRatings -> ItemRatingMap
+ratings = snd
 
 
 
 -- | Find the user in the list of samples
 findUser :: User -> [UserRatings] -> UserRatings
 findUser user s = head $ filter isUser s
-  where isUser (UserRatings k _) = k == user
+  where isUser (k, _) = k == user
 
 -- | The minkowski distance function, where r is the exponent
 minkowski :: Rating -> Rating -> Int -> Rating
@@ -61,14 +84,14 @@ pearson l r = let
            
 -- | Apply the given distance function across all eligable ratings
 -- | Eligible ratings are the intersection of l and r
-distanceWith :: ([Rating] -> [Rating] -> Rating) -> UserRatingMap -> UserRatingMap -> Rating
+distanceWith :: ([Rating] -> [Rating] -> Rating) -> ItemRatingMap -> ItemRatingMap -> Rating
 distanceWith f l r = f lItems rItems
   where lIsect = M.intersection l r
         rIsect = M.intersection r l
         lItems = M.elems lIsect
         rItems = M.elems rIsect
 
-jaccard :: UserRatingMap -> UserRatingMap -> Rating
+jaccard :: ItemRatingMap -> ItemRatingMap -> Rating
 jaccard l r = let
   num = fromIntegral $ M.size $ M.intersection l r :: Double
   denom = fromIntegral $ M.size $ M.union l r :: Double
@@ -82,14 +105,14 @@ computeDistance f l r = jaccard lr rr --distanceWith f lr rr
 -- | Compute the distances for the given samples from the user, using the function supplied, then sort by closest
 sortNeighbours :: ([Rating] -> [Rating] -> Rating) -> UserRatings -> [UserRatings] -> [(Rating, User)]
 sortNeighbours f u s = reverse $ sort $ map dist s
-  where iden (UserRatings a m) = a
+  where iden (a, m) = a
         dist sample = (computeDistance f u sample, iden sample)
 
 -- | Return the head from sortNeighbours
 closestNeighbour :: ([Rating] -> [Rating] -> Rating) -> UserRatings -> [UserRatings] -> (Rating, User)
 closestNeighbour f u s = head $ sortNeighbours f u s
 
-closestRatings :: ([Rating] -> [Rating] -> Rating) -> UserRatings -> [UserRatings] -> UserRatingMap
+closestRatings :: ([Rating] -> [Rating] -> Rating) -> UserRatings -> [UserRatings] -> ItemRatingMap
 closestRatings f u s = nrRatings
   where neighbour = snd $ closestNeighbour f u s
         nrRatings = ratings $ findUser neighbour s

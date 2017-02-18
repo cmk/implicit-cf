@@ -1,7 +1,7 @@
 module Utils where
 
 import qualified Data.MultiMap as MM
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 import qualified Data.Vector as V
 
 type Item = Int -- Item id
@@ -9,9 +9,11 @@ type User = Int  -- User id
 type Error = Double
 type Rating = Double
 
-type UserItemRatingMap = M.Map User ItemRatingMap
+
 type ItemRatingMap = M.Map Item Rating
-type UserRatingMap = M.Map User Rating
+type UserRatings = (User, ItemRatingMap)
+type UserItemRatingMap = M.Map User ItemRatingMap
+
 
 type DataPoint = (User,Item,Rating)
 type DataSet = V.Vector DataPoint
@@ -21,7 +23,7 @@ type BiasModel = (Rating,              --avg rating,
                   UserItemRatingMap)   --map contains all ratings to user item keys
 
 -- collection of a user's ratings
-data UserRatings = UserRatings User UserRatingMap deriving (Show, Eq)
+
 
 itemUserMap :: DataSet -> MM.MultiMap Item User
 itemUserMap v = V.foldl (\acc (u,i,r) -> MM.insert i u acc) MM.empty v
@@ -32,3 +34,5 @@ userItemRatingMap v = V.foldl insertUser M.empty v
             where insertUser acc (u, i, r) = M.insertWith (insertItem i r) u (M.singleton i r) acc
                   insertItem i r _ old = M.insert i r old
 
+userItemRatingMap' :: [UserRatings] -> UserItemRatingMap
+userItemRatingMap' = M.fromList
