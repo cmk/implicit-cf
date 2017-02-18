@@ -8,19 +8,22 @@ type Item = Int -- Item id
 type User = Int  -- User id
 type Error = Double
 type Rating = Double
-type UserRatingMap = MM.MultiMap User Rating
-type ItemUserMap = MM.MultiMap Item User
-type ItemRatingMap = M.Map Item Rating
+
 type UserItemRatingMap = M.Map User ItemRatingMap
+type ItemRatingMap = M.Map Item Rating
+type UserRatingMap = M.Map User Rating
+
 type DataPoint = (User,Item,Rating)
 type DataSet = V.Vector DataPoint
 type BiasModel = (Rating,              --avg rating,
-                  UserRatingMap,       --keys are users. values are ratings of those users
-                  ItemUserMap,         --keys are items. values are users who rated that item
+                  MM.MultiMap User Rating,  --keys are users. values are ratings of those users
+                  MM.MultiMap Item User, --keys are items. values are users who rated that item
                   UserItemRatingMap)   --map contains all ratings to user item keys
 
+-- collection of a user's ratings
+data UserRatings = UserRatings User UserRatingMap deriving (Show, Eq)
 
-itemUserMap :: DataSet -> ItemUserMap
+itemUserMap :: DataSet -> MM.MultiMap Item User
 itemUserMap v = V.foldl (\acc (u,i,r) -> MM.insert i u acc) MM.empty v
 
 -- | creates mapping for user/item to rating

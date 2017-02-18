@@ -17,7 +17,7 @@ cabal-version:       >=1.10
 
 executable recommender
   main-is:             Main.hs	
-  other-modules:       Utils, Bias, MatrixFactorization
-  build-depends:       base, cassava, vector, bytestring, matrix, containers, multimap, sgd
+  other-modules:       Utils, Bias, UserBased, MatrixFactorization
+  build-depends:       base, cassava, vector, bytestring, matrix, containers, multimap, split, csv, sgd
   hs-source-dirs:      src
   default-language:    Haskell2010

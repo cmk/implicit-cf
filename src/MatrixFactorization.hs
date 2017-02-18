@@ -19,7 +19,7 @@ type Matrices = U.Vector Double -- factor matrices P, Q^t stored in row-major or
 {- notes / TODO
 
 user Reader to encode config stuff like Matrices, BiasModel etc
-
+fix gradP, gradQ repetition with ap or map2 or somesuch
 -}
 
 
@@ -91,6 +91,42 @@ gradP :: BiasModel -> Matrices -> DataPoint -> [(Int, Double)]
 gradP biasModel matrices dataPoint = do
   f <- fRange
   let (user,item,rating) = dataPoint
+      conf = confidence rating
+      err = errorAt biasModel matrices dataPoint
+      update = conf * err * (matrices U.! (userIndex user f)) - lambda * (matrices U.! (itemIndex item f))
+  return (itemIndex item f, update)
+
+-- computes the gradient step for the user component
+gradQ :: BiasModel -> Matrices -> DataPoint -> [(Int, Double)]
+gradQ biasModel matrices dataPoint = do
+  f <- fRange
+  let (user,item,rating) = dataPoint
+      conf = confidence rating
+      err = errorAt biasModel matrices dataPoint
+      update = conf * err * (matrices U.! (itemIndex item f)) - lambda * (matrices U.! (userIndex user f))
+  return (userIndex user f, update)
+
+-- calculates error for user, item, rating with a given latent factor vector
+errorAt :: BiasModel -> Matrices -> DataPoint -> Error 
+errorAt biasModel matrices (user,item,rating) = preference rating - bias - prediction 
+  where prediction = (sum [(matrices U.! (itemIndex item f)) * (matrices U.! (userIndex user f))| f <- fRange])
+        bias = 0.0 --B.predict biasModel user item
+
+
+-- see Hu et. al. "Collaborative Filtering for Implicit Feedback Datasets", section 4     
+confidence :: Rating -> Double
+confidence rating = 1 + alpha * rating
+
+preference :: Rating -> Double
+preference rating | rating > 0.0 = 1.0
+                  | otherwise = 0.0
+
+{-
+-- computes the gradient step for the item component
+gradP :: BiasModel -> Matrices -> DataPoint -> [(Int, Double)]  
+gradP biasModel matrices dataPoint = do
+  f <- fRange
+  let (user,item,rating) = dataPoint
       err = errorAt biasModel matrices dataPoint
       update = err * (matrices U.! (userIndex user f)) - lambda * (matrices U.! (itemIndex item f))
   return (itemIndex item f, update)
@@ -104,11 +140,10 @@ gradQ biasModel matrices dataPoint = do
       update = err * (matrices U.! (itemIndex item f)) - lambda * (matrices U.! (userIndex user f))
   return (userIndex user f, update)
 
-
 -- calculates error for user, item, rating with a given latent factor vector
 errorAt :: BiasModel -> Matrices -> DataPoint -> Error 
 errorAt biasModel matrices (user,item,rating) = rating - bias - innerProd
   where innerProd = (sum [(matrices U.! (itemIndex item f)) * (matrices U.! (userIndex user f))| f <- fRange])
         bias = B.predict biasModel user item
         --(mu,urm,ium,uirm) = biasModel
-        
+-}
