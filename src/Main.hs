@@ -8,14 +8,18 @@ import qualified Data.ByteString.Lazy as BL
 
 
 import qualified MatrixFactorization as MF
-import qualified UserBased as UB
+import qualified KNearestNeighbors as KN
 import qualified Bias as B
 import Utils
 
 
 import Text.CSV (parseCSV, Record)
 import Data.List.Split (splitOn)
+import Data.List (intercalate)
 import Text.Read (readMaybe)
+import Data.Foldable (maximumBy)
+
+
 import qualified Data.Map.Strict as M
 import qualified Data.MultiMap as MM
 
@@ -23,29 +27,45 @@ import qualified Data.MultiMap as MM
 
 main :: IO ()
 main = do
-  let fileName = "data/test.csv"
+  let fileName = "data/test2.csv"
   input <- readFile fileName
   let csv = parseCSV fileName input
   either print matrixFactorization csv
 
 matrixFactorization :: [Record] -> IO ()
 matrixFactorization csv = do
-  putStrLn "Start userbased recommender"
+  putStrLn "Start factorization-based recommender"
   let users = load csv
       trainData = dataSet users
-      nUsers' = length users --should be max user # found +1
-      nItems' = MM.numKeys $ itemUserMap trainData  --should be max item # found +1
+      testData = [0..11]
       --bm = B.model trainData
   --(trainData, testData) <- loadData base test
   putStrLn $ "datasetSize: " ++ (show $ V.length trainData)
-  putStrLn $ "nUsers: " ++ (show nUsers')
-  putStrLn $ "nItems: " ++ (show nItems')
+  putStrLn $ "nUsers, nItems " ++ (show $ getParams trainData)
   m <- MF.model trainData
+  putStrLn ""
   --print m
-  putStrLn $ MF.showMat $ MF.getP m
-  putStrLn $ MF.showMat $ MF.getQ m
   putStrLn $ MF.showMat $ MF.getR m
+  putStrLn $ intercalate "\n" $ map show $ MF.recommend m testData
+  --putStrLn $ MF.showMat $ MF.getP m
+  --putStrLn $ MF.showMat $ MF.getQ m
+  
   --putStrLn $ "Mean Absolute Error: " ++ (show $ mae (MF.predict bm m) testData)  
+
+kNearestNeighbors :: [Record] -> IO ()
+kNearestNeighbors csv = let
+  users = map KN.avg $ load csv
+  user = KN.avg $ (-1, M.fromList [(8,2),(48,1)])
+  closests = take 30 $ KN.sortNeighbors user users
+  recs = KN.recommend user users
+  r = KN.ratings $ KN.findUser (snd $ head closests) users
+  in do
+    putStrLn "Start knn-based recommender"
+    print closests
+    print recs
+    print user
+    print r
+
 
 
 mae :: (Int -> Int -> Double) -> DataSet -> Double
@@ -78,8 +98,17 @@ parseToTuple record = let
   items' = M.fromListWith (+) $ map (\k -> (k,1.0)) items
   in (name, (name, items'))
 
+getParams :: DataSet -> (Int, Int)
+getParams dataSet = let
+  max1 (a,_,_) (a',_,_) = compare a a'
+  max2 (_,b,_) (_,b',_) = compare b b'
+  (maxUser,_,_) = maximumBy max1 dataSet
+  (_,maxItem,_) = maximumBy max2 dataSet
+  in (maxUser+1, maxItem+1)
 
-  
+
+
+              
 {-
 
 import Data.Csv
