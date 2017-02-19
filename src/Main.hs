@@ -30,7 +30,7 @@ main = do
   let fileName = "data/test2.csv"
   input <- readFile fileName
   let csv = parseCSV fileName input
-  either print matrixFactorization csv
+  either print kNearestNeighbors csv
 
 matrixFactorization :: [Record] -> IO ()
 matrixFactorization csv = do
@@ -54,26 +54,13 @@ matrixFactorization csv = do
 
 kNearestNeighbors :: [Record] -> IO ()
 kNearestNeighbors csv = let
-  users = map KN.avg $ load csv
-  user = KN.avg $ (-1, M.fromList [(8,2),(48,1)])
-  closests = take 30 $ KN.sortNeighbors user users
-  recs = KN.recommend user users
-  r = KN.ratings $ KN.findUser (snd $ head closests) users
+  trainData = map KN.avg $ load csv
+  testData = [0..11]
+  recs = KN.recommend trainData testData
+  --r = KN.ratings $ KN.findUser (snd $ head closests) users
   in do
     putStrLn "Start knn-based recommender"
-    print closests
     print recs
-    print user
-    print r
-
-
-
-mae :: (Int -> Int -> Double) -> DataSet -> Double
-mae p v = (V.sum $ errors p v) / (fromIntegral (V.length v))
-
-errors :: ( Int -> Int -> Double ) -> DataSet -> V.Vector Double
-errors p v = V.filter (\x -> not $ isNaN x) $ V.map (\(u, i, r) -> abs (r - p u i)) v
-  where diff (u, i, r) = abs (r - p u i)
 
 load :: [Record] -> [UserRatings]
 load csv = M.elems $ M.fromListWith combine $ map parseToTuple $ tail $ init csv
@@ -131,6 +118,12 @@ matrixFactorization (base:test:xs) =  do
   let bm = B.model traindata
   putStrLn $ "Mean Absolute Error: " ++ (show $ mae (MF.predict bm m) testdata)  
 
+mae :: (Int -> Int -> Double) -> DataSet -> Double
+mae p v = (V.sum $ errors p v) / (fromIntegral (V.length v))
+
+errors :: ( Int -> Int -> Double ) -> DataSet -> V.Vector Double
+errors p v = V.filter (\x -> not $ isNaN x) $ V.map (\(u, i, r) -> abs (r - p u i)) v
+  where diff (u, i, r) = abs (r - p u i)
 
 
 bias (base:test:xs) = do

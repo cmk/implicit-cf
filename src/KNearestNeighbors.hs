@@ -2,7 +2,7 @@ module KNearestNeighbors where -- (model, recommend) where
 
 import qualified Data.Map.Strict as M
 import Data.List
-
+import Data.Maybe
 
 import Utils
 
@@ -37,9 +37,10 @@ ratings = snd
 
 
 -- | Find the user in the list of samples
-findUser :: User -> [UserRatings] -> UserRatings
-findUser user s = head $ filter isUser s
-  where isUser (k, _) = k == user
+findUser :: User -> [UserRatings] -> Maybe UserRatings
+findUser user s = let
+  isUser (k, _) = k == user
+  in find isUser s
 
 -- | Apply the given distance function across all eligable ratings
 -- | Eligible ratings are the intersection of l and r
@@ -74,12 +75,12 @@ closestNeighbor u s = head $ sortNeighbors u s
 closestRatings :: UserRatings -> [UserRatings] -> ItemRatingMap
 closestRatings u s = nrRatings
   where neighbor = snd $ closestNeighbor u s
-        nrRatings = ratings $ findUser neighbor s
+        nrRatings = ratings $ fromJust $ findUser neighbor s
 
 -- | Recommend items from the nearest neighbor in the samples list for the given user,
 -- | sorted by highest scored item first
-recommend :: UserRatings -> [UserRatings] -> [(User, Rating)]
-recommend u s = sortBy highestFirst recommendations
+recommend' :: UserRatings -> [UserRatings] -> [(Item,Rating)]
+recommend' u s = sortBy highestFirst recommendations
   where uRatings  = ratings u
         clRatings = closestRatings u s
         recommendations = M.toList clRatings 
@@ -87,3 +88,20 @@ recommend u s = sortBy highestFirst recommendations
                     | s1 > s2 = LT
                     | s1 < s2 = GT
                     | otherwise = EQ
+
+recommend :: [UserRatings] -> [User] -> [[Item]]
+recommend model users = let
+  makeRec user = let
+    defaultUser = fromJust $ findUser 0 model
+    user' = fromMaybe defaultUser $ findUser user model -- if user is not in the training dataset then default to recommendations for first user.
+    clRatings = closestRatings user' model
+    userRecs = M.toList clRatings
+    highestFirst (_,s1) (_,s2)
+            | s1 > s2 = LT
+            | s1 < s2 = GT
+            | otherwise = EQ
+    in map fst $ take 10 $ sortBy highestFirst $ userRecs
+  in map makeRec users
+              
+
+
