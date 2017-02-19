@@ -37,10 +37,10 @@ ratings = snd
 
 
 -- | Find the user in the list of samples
-findUser :: User -> [UserRatings] -> Maybe UserRatings
-findUser user s = let
-  isUser (k, _) = k == user
-  in find isUser s
+findUser :: [UserRatings] -> User -> Maybe UserRatings
+findUser users u = let
+  isUser (k, _) = k == u
+  in find isUser users
 
 -- | Apply the given distance function across all eligable ratings
 -- | Eligible ratings are the intersection of l and r
@@ -51,57 +51,53 @@ distanceWith f l r = f lItems rItems
         lItems = M.elems lIsect
         rItems = M.elems rIsect
 
-jaccard :: ItemRatingMap -> ItemRatingMap -> Rating
-jaccard l r = let
-  num = fromIntegral $ M.size $ M.intersection l r :: Double
-  denom = fromIntegral $ M.size $ M.union l r :: Double
-  in num / denom
-  
-computeDistance :: UserRatings -> UserRatings -> Rating
-computeDistance l r = jaccard lr rr 
-  where lr = ratings l
-        rr = ratings r
 
--- | Compute the distances for the given samples from the user, using the function supplied, then sort by closest
-sortNeighbors :: UserRatings -> [UserRatings] -> [(Rating, User)]
-sortNeighbors u s = reverse $ sort $ map dist s
-  where iden (a, m) = a
-        dist sample = (computeDistance u sample, iden sample)
+jaccard :: UserRatings -> UserRatings -> Double
+jaccard l r = let
+  lr = ratings l
+  rr = ratings r
+  dist l r = let
+    num = fromIntegral $ M.size $ M.intersection l r :: Double
+    denom = fromIntegral $ M.size $ M.union l r :: Double
+    in num / denom  
+  in dist lr rr 
+
+        
+-- | compute the Jaccard distances for the given samples from the user, then sort by closest
+sortNeighbors :: [UserRatings] -> UserRatings -> [(Double,UserRatings)]
+sortNeighbors s u = let
+  getDist sample = (jaccard u sample, sample)
+  sorted = reverse $ sort $ map getDist s
+  in sorted
+       
 
 -- | Return the head from sortNeighbors
-closestNeighbor :: UserRatings -> [UserRatings] -> (Rating, User)
-closestNeighbor u s = head $ sortNeighbors u s
+kNearestNeighbors :: Int -> [UserRatings] -> UserRatings -> [(Double,UserRatings)]
+kNearestNeighbors k users u = take k $ sortNeighbors users u
 
-closestRatings :: UserRatings -> [UserRatings] -> ItemRatingMap
-closestRatings u s = nrRatings
-  where neighbor = snd $ closestNeighbor u s
-        nrRatings = ratings $ fromJust $ findUser neighbor s
+getRatings :: Int -> [UserRatings] -> UserRatings -> [(Item,Rating)]
+getRatings k users u = let
+  neighbors = kNearestNeighbors k users u
+  convert (dist,user) = map (\(item,rating) -> (item,rating * dist)) $ M.toList $ snd user  --weight ratings by distance from user
+  ratings = neighbors >>= convert
+  compare (a,_) (a',_) = a == a'
+  in nubBy compare ratings
 
--- | Recommend items from the nearest neighbor in the samples list for the given user,
+-- | Recommend items from the 10 nearest neighbors in the samples list for the given user,
 -- | sorted by highest scored item first
-recommend' :: UserRatings -> [UserRatings] -> [(Item,Rating)]
-recommend' u s = sortBy highestFirst recommendations
-  where uRatings  = ratings u
-        clRatings = closestRatings u s
-        recommendations = M.toList clRatings 
-        highestFirst (_,s1) (_,s2)
-                    | s1 > s2 = LT
-                    | s1 < s2 = GT
-                    | otherwise = EQ
 
 recommend :: [UserRatings] -> [User] -> [[Item]]
-recommend model users = let
-  makeRec user = let
-    defaultUser = fromJust $ findUser 0 model
-    user' = fromMaybe defaultUser $ findUser user model -- if user is not in the training dataset then default to recommendations for first user.
-    clRatings = closestRatings user' model
-    userRecs = M.toList clRatings
+recommend users testData = let
+  makeRec u = let
+    defaultUser = fromJust $ findUser users 0
+    u' = fromMaybe defaultUser $ findUser users u-- if user is not in the training dataset then default to recommendations for first user.
+    userRecs = getRatings 10 users u'
     highestFirst (_,s1) (_,s2)
             | s1 > s2 = LT
             | s1 < s2 = GT
             | otherwise = EQ
     in map fst $ take 10 $ sortBy highestFirst $ userRecs
-  in map makeRec users
+  in map makeRec testData
               
 
 

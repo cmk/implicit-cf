@@ -27,7 +27,7 @@ import qualified Data.MultiMap as MM
 
 main :: IO ()
 main = do
-  let fileName = "data/test2.csv"
+  let fileName = "data/test3.csv"
   input <- readFile fileName
   let csv = parseCSV fileName input
   either print kNearestNeighbors csv
@@ -60,7 +60,7 @@ kNearestNeighbors csv = let
   --r = KN.ratings $ KN.findUser (snd $ head closests) users
   in do
     putStrLn "Start knn-based recommender"
-    print recs
+    putStrLn $ intercalate "\n" $ map show recs
 
 load :: [Record] -> [UserRatings]
 load csv = M.elems $ M.fromListWith combine $ map parseToTuple $ tail $ init csv
