@@ -89,9 +89,9 @@ getRatings k users u = let
 recommend :: [UserRatings] -> [User] -> [[Item]]
 recommend users testData = let
   makeRec u = let
-    defaultUser = fromJust $ findUser users 0
+    defaultUser = (-1, M.fromList [(0,1)])
     u' = fromMaybe defaultUser $ findUser users u-- if user is not in the training dataset then default to recommendations for first user.
-    userRecs = getRatings 10 users u'
+    userRecs = getRatings 30 users u'
     highestFirst (_,s1) (_,s2)
             | s1 > s2 = LT
             | s1 < s2 = GT

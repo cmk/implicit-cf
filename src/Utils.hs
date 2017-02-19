@@ -4,6 +4,7 @@ import qualified Data.MultiMap as MM
 import qualified Data.Map.Strict as M
 import qualified Data.Vector as V
 
+
 type Item = Int -- Item id
 type User = Int  -- User id
 type Error = Double
@@ -36,3 +37,5 @@ userItemRatingMap v = V.foldl insertUser M.empty v
 
 userItemRatingMap' :: [UserRatings] -> UserItemRatingMap
 userItemRatingMap' = M.fromList
+
+
