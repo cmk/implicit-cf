@@ -89,14 +89,16 @@ getRatings k users u = let
 recommend :: [UserRatings] -> [User] -> [[Item]]
 recommend users testData = let
   makeRec u = let
-    defaultUser = (-1, M.fromList [(0,1)])
-    u' = fromMaybe defaultUser $ findUser users u-- if user is not in the training dataset then default to recommendations for first user.
-    userRecs = getRatings 30 users u'
+    defaultItems = [1,2,0,5,6,4,8,13,14,11] --most bought items
+    defaultUser = (-1, M.fromList $ map (flip (,) $ 1) defaultItems)
+    u' = fromMaybe defaultUser $ findUser users u-- if user is not in the training dataset then default to recommendations for default user.
+    userRecs = getRatings 20 users u'
     highestFirst (_,s1) (_,s2)
             | s1 > s2 = LT
             | s1 < s2 = GT
             | otherwise = EQ
-    in map fst $ take 10 $ sortBy highestFirst $ userRecs
+    out = map fst $ sortBy highestFirst $ userRecs
+    in take 10 $ nub $ out ++ defaultItems
   in map makeRec testData
               
 

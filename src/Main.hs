@@ -14,7 +14,7 @@ import Utils
 
 import Control.Monad (liftM2)
 
-import Text.CSV (parseCSV, Record)
+import Text.CSV 
 import Data.List (intercalate)
 import Data.Foldable (maximumBy)
 import Data.List.Split (splitOn)
@@ -29,15 +29,32 @@ import qualified Data.MultiMap as MM
 
 main :: IO ()
 --main = execute "knn" "data/test3.csv"
-main = test "knn" "data/trx1.aa" "data/trx1.ab"
+--main = test "knn" "data/trx1.aa" "data/trx1.ab"
+main = test "knn" "data/trx_data.csv" "data/recommend_1.csv"
 
+--main = convert "data/trx_data.csv" "data/trx_unbatched.csv"
+
+convert inFilePath outFilePath = let
+  header = ["CustomerID", "StockCode", "Quantity"]
+  transform csv = writeFile outFilePath $ printCSV
+                                        $ (header:)
+                                        $ toRecords
+                                        $ dataSet
+                                        $ countVectorizer csv
+  in do
+    input <- readFile inFilePath
+    let csv = parseCSV inFilePath input
+    either print transform csv
 
 
 execute :: String -> FilePath -> IO ()
 execute algorithm filePath = do
   input <- readFile filePath
   let csv = parseCSV filePath input
-  either print (dispatch' algorithm) csv
+  either print print csv
+  --either print (dispatch' algorithm) csv
+
+check csv = print $ head $ countVectorizer csv
 
 test :: String -> FilePath -> FilePath -> IO ()
 test algorithm trainFile testFile = do
@@ -54,10 +71,20 @@ dispatch' :: String -> [Record] -> IO ()
 dispatch' "mf" = matrixFactorization
 
 
-  
-
 kNearestNeighbors :: [Record] -> [Record] -> IO ()
 kNearestNeighbors trainCsv testCsv = let
+  trainData = map KN.avg $ countVectorizer trainCsv
+  testData = map (read . head) $ tail $ init testCsv :: [User]
+  --users = map fst testData
+  header = ["customerId", "recommendedProducts"]
+  recs = KN.recommend trainData testData
+  out = map (intercalate "|") $ (map . map) show recs
+  glue a b = (show a) : b : []
+  out' = zipWith glue testData out
+  in writeFile "data/recommend_1-KNN.csv" $  printCSV $ header:out'
+  
+testKNearestNeighbors :: [Record] -> [Record] -> IO ()
+testKNearestNeighbors trainCsv testCsv = let
   trainData = map KN.avg $ countVectorizer trainCsv
   testData = map parseToTuple $ init testCsv
   users = map fst testData
@@ -81,24 +108,8 @@ scoreOne purchases items = let
    True -> 1
    False -> 0
 
+
 {-
-[2,55,69,84,17,21,47,67,97,135]
-[0]
-[0]
-[0]
-[124,44,64,101,133,149,180,219,13,290]
-[15,21,109,34,211,1,13,226,234,277]
-[14,133,237,113,7,101]
-[240,60,78,95,141,296,297,289,2,35]
-[93,259,89,68,0,1,2,16,25,31]
-[6,16,66,242,259,37,81,9,130,142]
-[94,247,2,0,89,1,8,93,200,233]
-[124,37,1,51,63,114,208,224,225,30]
-[40,121,150,175,130,148,14,1,3,257]
-[48,8,14,16,79,44,2,21,36,38]
-[2,296,39,81,179,211,268,275,215,100]
-
-
 
 scoreOne purchases items | trace (show items) False = undefined
 scoreOne purchases items = let
@@ -148,10 +159,10 @@ getParams dataSet = let
   in (maxUser+1, maxItem+1)
 
 
-countVectorizer :: [Record] -> [UserRatings]
-countVectorizer csv = let
-  purchases = map parseToTuple $ tail $ init csv --stripping header and trailing line
-  in M.toList $ M.fromListWith (M.unionWith (+)) purchases
+toRecords :: DataSet -> [Record]
+toRecords dataSet = let
+  toList (a,b,c) = [a,b,round c] 
+  in V.toList $ (fmap . fmap) show $ fmap toList dataSet
   
 dataSet :: [UserRatings] -> DataSet
 dataSet users = let
@@ -159,7 +170,11 @@ dataSet users = let
   dataPoints (user,ratings) = map (tuple user) $ M.toList ratings
   in V.fromList $ users >>= dataPoints
   
-
+countVectorizer :: [Record] -> [UserRatings]
+countVectorizer csv = let
+  purchases = map parseToTuple $ tail $ init csv --stripping header and trailing line
+  in M.toList $ M.fromListWith (M.unionWith (+)) purchases
+  
 
 parseToTuple :: Record -> UserRatings
 parseToTuple record = let
