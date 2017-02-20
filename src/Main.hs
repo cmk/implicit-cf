@@ -1,30 +1,20 @@
 module Main where
 
+import Control.Monad (liftM2)
+import Data.Foldable (maximumBy)
+import Data.List (intercalate)
+import Data.List.Split (splitOn)
+import Text.Read (readMaybe)
+import Text.CSV 
 
-
-import System.Environment
+import qualified Data.Map.Strict as M
+import qualified Data.MultiMap as MM
 import qualified Data.Vector as V
-import qualified Data.ByteString.Lazy as BL
-
 
 import qualified MatrixFactorization as MF
 import qualified KNearestNeighbors as KN
 import qualified Bias as B
-import Utils
-
-import Control.Monad (liftM2)
-
-import Text.CSV 
-import Data.List (intercalate)
-import Data.Foldable (maximumBy)
-import Data.List.Split (splitOn)
-import Text.Read (readMaybe)
-
-import Debug.Trace
-
-import qualified Data.Map.Strict as M
-import qualified Data.MultiMap as MM
-
+import Types
 
 
 main :: IO ()
@@ -37,22 +27,6 @@ main = execute score "data/recommend_1-ALSshort.csv" "data/trx1.ab"
 --main = convert "data/trx1train.csv" "data/trx1_unbatched.csv"
 
 
-
-{-
-execute :: String -> FilePath -> IO ()
-execute algorithm filePath = do
-  input <- readFile filePath
-  let csv = parseCSV filePath input
-  either print print csv
-  --either print (dispatch' algorithm) csv
-
-check csv = print $ head $ countVectorizer csv
-
-
-
--}
-
-
 execute :: ([Record] -> [Record] -> IO ()) -> FilePath -> FilePath -> IO ()
 execute function trainFile testFile = do
   trainData <- readFile trainFile
@@ -63,25 +37,13 @@ execute function trainFile testFile = do
   either print (uncurry function) allCsv
 
 
-convert :: FilePath -> FilePath -> IO ()
-convert inFilePath outFilePath = let
-  header = ["CustomerID", "StockCode", "Quantity"]
-  transform csv = writeFile outFilePath $ printCSV
-                                        $ (header:)
-                                        $ toRecords
-                                        $ dataSet
-                                        $ countVectorizer csv
-  in do
-    input <- readFile inFilePath
-    let csv = parseCSV inFilePath input
-    either print transform csv
-
     
 kNearestNeighbors :: [Record] -> [Record] -> IO ()
 kNearestNeighbors train test = let
-  trainData = map KN.avg $ countVectorizer train      ----MOVE TO KNN FILE!!
-  testData = map (read . head) $ tail $ init test :: [User] --works on holdout trx data and test data
-  --users = map fst testData
+  train' = tail $ init train --strip header and trailing newline
+  test' = tail $ init test
+  trainData = countVectorizer train' 
+  testData = map (read . head) $ test' :: [User] --works on holdout trx data and test data
   header = ["customerId", "recommendedProducts"]
   recs = KN.recommend trainData testData
   out = map (intercalate "|") $ (map . map) show recs
@@ -90,42 +52,52 @@ kNearestNeighbors train test = let
   in writeFile "data/recommend_1-KNN.csv" $  printCSV $ header:out'
   
 
+matrixFactorization :: [Record] -> IO ()
+matrixFactorization csv = do
+  putStrLn "Start factorization-based recommender"
+  let csv' = tail $ init csv
+      users = countVectorizer csv'
+      trainData = dataSet users
+      testData = [0..11]
+      --bm = B.model trainData
+  --(trainData, testData) <- loadData base test
+  putStrLn $ "datasetSize: " ++ (show $ V.length trainData)
+  --putStrLn $ "nUsers, nItems " ++ (show $ getParams trainData)
+  m <- MF.model trainData
+  putStrLn ""
+  --print m
+  --putStrLn $ MF.showMat $ MF.getR m
+  putStrLn $ intercalate "\n" $ map show $ MF.recommend m testData
+  --putStrLn $ MF.showMat $ MF.getP m
+  --putStrLn $ MF.showMat $ MF.getQ m
+  
+  --putStrLn $ "Mean Absolute Error: " ++ (show $ mae (MF.predict bm m) testData)
 
+-- | A primitive CTR-style recommendation scorer to run on out-of-sample transaction data
 score :: [Record] -> [Record] -> IO ()
 score recommended purchased = let
-  purchases = map parseToTuple $ tail $ init purchased    --MOVE HEAD , TAIL OUT OF countV
+  recommended' = tail $ init recommended --strip header and trailing newline
+  purchased' = tail $ init purchased
+  purchases = map parseToTuple purchased'
   recs = (map . map) fst $ map M.toList
                          $ map snd 
                          $ map parseToTuple
-                         $ tail $ init recommended
+                         $ recommended'
   --users = map fst purchases
   userTx = map snd purchases
+  submissionScore = sum $ map (uncurry scoreOne) $ zip userTx recs
   in do 
-    putStrLn $ "score: " ++ (show $ scoreList userTx recs)
-    putStrLn $ "nrecs: " ++ (show $ length recs)
-  
-scoreList :: [ItemRatingMap] -> [[Item]] -> Int
-scoreList userTx recs = let
-  items = zip userTx recs
-  in sum $ map (uncurry scoreOne) items
-  
-scoreOne :: ItemRatingMap -> [Item] -> Int
---scoreOne purchases items | trace (show $ length items) False = undefined
+    putStrLn $ "score: " ++ (show $ submissionScore / (fromIntegral $ length recs))
+
+
+-- | Assigns a 1 if any of the items purchased was in the recommendation list
+scoreOne :: ItemRatingMap -> [Item] -> Double
 scoreOne purchases items = let
   out = or [ M.member i purchases | i <- items]
   in case out of
-   True -> 1
-   False -> 0
+   True -> 1.0
+   False -> 0.0
 
-
-
-getParams :: DataSet -> (Int, Int)
-getParams dataSet = let
-  max1 (a,_,_) (a',_,_) = compare a a'
-  max2 (_,b,_) (_,b',_) = compare b b'
-  (maxUser,_,_) = maximumBy max1 dataSet
-  (_,maxItem,_) = maximumBy max2 dataSet
-  in (maxUser+1, maxItem+1)
 
 
 toRecords :: DataSet -> [Record]
@@ -138,23 +110,39 @@ dataSet users = let
   tuple a (b,c) = (a,b,c)
   dataPoints (user,ratings) = map (tuple user) $ M.toList ratings
   in V.fromList $ users >>= dataPoints
-  
+
+-- | 
 countVectorizer :: [Record] -> [UserRatings]
 countVectorizer csv = let
-  purchases = map parseToTuple $ tail
-                               $ init csv --stripping header and trailing line
+  purchases = map parseToTuple csv
   in M.toList $ M.fromListWith (M.unionWith (+)) purchases
   
-
+-- | Converts a csv line into a UserRatings tuple
 parseToTuple :: Record -> UserRatings
 parseToTuple record = let
   read' r = maybe (-1) id (readMaybe r :: Maybe Int)
-  --read' r = read r :: Int
   name = read' $ head record 
   items = map read' $ splitOn "|" $ head $ tail record
   items' = M.fromListWith (+) $ map (\k -> (k,1.0)) items
   in (name, items')     --FIX THIS IS STUPD
 
+-- | Conversion utility. Generates unique user-item-quantity tuples.
+convert :: FilePath -> FilePath -> IO ()
+convert inFilePath outFilePath = let
+  header = ["customerId", "itemId", "quantity"]
+  transform csv = writeFile outFilePath $ printCSV
+                                        $ (header:)
+                                        $ toRecords
+                                        $ dataSet
+                                        $ countVectorizer csv
+  in do
+    input <- readFile inFilePath
+    let csv = parseCSV inFilePath input
+    either print transform csv
+
+    
+
+{-
 
 testKNearestNeighbors :: [Record] -> [Record] -> IO ()
 testKNearestNeighbors trainCsv testCsv = let
@@ -166,29 +154,6 @@ testKNearestNeighbors trainCsv testCsv = let
   in do 
     putStrLn $ "score: " ++ (show $ scoreList userTx recs)
     putStrLn $ "nrecs: " ++ (show $ length recs)
-    
-
-matrixFactorization :: [Record] -> IO ()
-matrixFactorization csv = do
-  putStrLn "Start factorization-based recommender"
-  let users = countVectorizer csv
-      trainData = dataSet users
-      testData = [0..11]
-      --bm = B.model trainData
-  --(trainData, testData) <- loadData base test
-  putStrLn $ "datasetSize: " ++ (show $ V.length trainData)
-  putStrLn $ "nUsers, nItems " ++ (show $ getParams trainData)
-  m <- MF.model trainData
-  putStrLn ""
-  --print m
-  putStrLn $ MF.showMat $ MF.getR m
-  putStrLn $ intercalate "\n" $ map show $ MF.recommend m testData
-  --putStrLn $ MF.showMat $ MF.getP m
-  --putStrLn $ MF.showMat $ MF.getQ m
-  
-  --putStrLn $ "Mean Absolute Error: " ++ (show $ mae (MF.predict bm m) testData)  
-
-{-
 
 scoreOne purchases items | trace (show items) False = undefined
 scoreOne purchases items = let

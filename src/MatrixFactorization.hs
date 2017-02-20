@@ -1,32 +1,29 @@
-module MatrixFactorization where -- (model, recommend) where
+module MatrixFactorization (model, recommend, predict) where
 
-import qualified Data.Vector as V
-import qualified Data.Vector.Unboxed as U 
-import qualified Data.MultiMap as MM
-import qualified Data.Map as M
-
-import qualified Numeric.SGD as S
-import qualified Numeric.SGD.Dataset as D
-import Numeric (showFFloat)
+import Control.Monad (replicateM)
 import Data.List (foldl',sort)
-import qualified Bias as B
+import Numeric (showFFloat)
+import System.Random (randomRIO)
 import Text.Printf
 
-import Utils
-
---import Debug.Trace
-
+import qualified Data.Map as M
 import qualified Data.Matrix as DM
+import qualified Data.MultiMap as MM
+import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as U
+import qualified Numeric.SGD as S
+import qualified Numeric.SGD.Dataset as D
 
+import qualified Bias as B
+import Types
 
-import System.Random (randomRIO)
-import Control.Monad (replicateM)
-
+type Error = Double
 type Matrices = U.Vector Double -- factor matrices P, Q stored in row-major order
 
 
 {- notes / TODO
 
+this is a 
 see Hu et. al. "Collaborative Filtering for Implicit Feedback Datasets"
 
 
@@ -36,37 +33,21 @@ fix gradP, gradQ repetition with ap or map2 or somesuch
 
 
 rate = 0.2 -- initial learning rate
-alpha = 0.1 -- confidence scaling factor, see Hu et al section 4
-lambda = 0.0 -- Tikhonov regularization paramater
+alpha = 15.0 -- confidence scaling factor, see Hu et al section 4
+lambda = 0.1 -- Tikhonov regularization paramater
 
-nr_iter = 150
-nFeatures = 3
-nUsers = 12
-nItems = 11 --should be max item # found +1
+nr_iter = 80
+nFeatures = 10
+nUsers = 12 --24381
+nItems = 11 --300
 fRange = [0..nFeatures-1]
 
-
-getP matrices = let
-  l = take (nItems * nFeatures) $ U.toList matrices
-  in DM.fromList nItems nFeatures l
-
-getQ matrices = let
-  l = drop (nItems * nFeatures) $ U.toList matrices
-  in DM.fromList nUsers nFeatures l
-  
-getR matrices = let
-  p = getP matrices
-  q = getQ matrices
-  in DM.multStd q $ DM.transpose p
-
-showMat :: DM.Matrix Double -> String
-showMat m = show $ fmap (\i -> showFFloat (Just 2) i "") m
 
 
 -- | computes a prediction for the rating of user u on item i 
 predict :: BiasModel -> Matrices -> User -> Item -> Rating
 predict biasModel matrices user item = let
-  bias = B.predict biasModel user item
+  bias = 0.0 --B.predict biasModel user item
   prediction = sum [(matrices U.! (itemIndex item f)) * (matrices U.! (userIndex user f))| f <- fRange]
   in bias + prediction
 
@@ -159,3 +140,21 @@ confidence rating = 1 + alpha * rating
 preference :: Rating -> Double
 preference rating | rating > 0.0 = 1.0
                   | otherwise = 0.0
+
+
+-- retrieve factor matrices P,Q and full matrix R = Q*P^t, for debugging only
+getP matrices = let
+  l = take (nItems * nFeatures) $ U.toList matrices
+  in DM.fromList nItems nFeatures l
+
+getQ matrices = let
+  l = drop (nItems * nFeatures) $ U.toList matrices
+  in DM.fromList nUsers nFeatures l
+  
+getR matrices = let
+  p = getP matrices
+  q = getQ matrices
+  in DM.multStd q $ DM.transpose p -- rows are users, cols are items
+
+showMat :: DM.Matrix Double -> String
+showMat m = show $ fmap (\i -> showFFloat (Just 2) i "") m

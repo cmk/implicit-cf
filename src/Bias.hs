@@ -4,8 +4,21 @@ import qualified Data.MultiMap as MM
 import qualified Data.Map.Strict as M
 import qualified Data.Vector as V
 
-import Utils
+import Types
 
+
+-- | Creates a 
+itemUserMap :: DataSet -> MM.MultiMap Item User
+itemUserMap v = V.foldl (\acc (u,i,r) -> MM.insert i u acc) MM.empty v
+
+-- | Creates mapping for user/item to rating
+userItemRatingMap :: DataSet -> UserItemRatingMap
+userItemRatingMap v = V.foldl insertUser M.empty v
+            where insertUser acc (u, i, r) = M.insertWith (insertItem i r) u (M.singleton i r) acc
+                  insertItem i r _ old = M.insert i r old
+
+userItemRatingMap' :: [UserRatings] -> UserItemRatingMap
+userItemRatingMap' = M.fromList
 
 
 -- | creates dictionaries for unpersonalized recommendation.
