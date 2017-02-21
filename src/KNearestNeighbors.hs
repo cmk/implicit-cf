@@ -40,7 +40,9 @@ kNearestNeighbors k users u = take k $ sortNeighbors users u
 -- weighted by item ratings and distance from user
 getRatings :: Int -> [UserRatings] -> UserRatings -> [(Item,Rating)]
 getRatings k users u = let
-  neighbors = kNearestNeighbors k users u
+  --normalize purchases to sum to 1.0
+  normalized = map avg users
+  neighbors = kNearestNeighbors k normalized u
   convert dist user = let
     weight item rating = (item,rating * dist)
     in map (uncurry weight) $ M.toList $ snd user  
@@ -52,14 +54,13 @@ getRatings k users u = let
 recommend :: [UserRatings] -> [User] -> [[Item]]
 recommend trainData testData = let
   makeRec u = let
-    users = map avg trainData
     --most purchased items in this dataset
     defaultItems = [1,2,0,5,6,4,8,13,14,11] 
     defaultUser = (-1, M.fromList $ map (flip (,) $ 1) defaultItems)
     -- if user is not in the training dataset then use a default
-    u' = fromMaybe defaultUser $ findUser users u
+    u' = fromMaybe defaultUser $ findUser trainData u
     -- k=20 seems to work well for this dataset
-    userRecs = getRatings 20 users u'
+    userRecs = getRatings 20 trainData u'
     highestFirst (_,s1) (_,s2)
             | s1 > s2 = LT
             | s1 < s2 = GT
