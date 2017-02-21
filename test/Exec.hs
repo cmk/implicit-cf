@@ -1,4 +1,4 @@
-module Main where
+module Exec (execute, kNearestNeighbors, matrixFactorization, score) where
 
 import Control.Monad (liftM2)
 import Data.Foldable (maximumBy)
@@ -13,16 +13,8 @@ import qualified Data.Vector as V
 
 import qualified MatrixFactorization as MF
 import qualified KNearestNeighbors as KN
-import qualified Bias as B
 import Types
 
-
-main :: IO ()
-main = execute (kNearestNeighbors "data/recommend_1-KNN.csv") "data/trx_data.csv" "data/trx1.ab"
---main = execute (matrixFactorization "data/recommend_1-SGD.csv") "data/trx_data.csv" "data/trx1.ab"
---main = execute score "data/recommend_1-SGD" "data/trx1.ab"
---main = execute score "data/recommend_1-KNN.csv" "data/trx1.ab"
---main = convert "data/trx1train.csv" "data/trx1_unbatched.csv"
 
 execute :: ([Record] -> [Record] -> IO ()) -> FilePath -> FilePath -> IO ()
 execute function trainFile testFile = do
@@ -91,16 +83,16 @@ countVectorizer csv = let
   purchases = map parseToTuple csv
   in M.toList $ M.fromListWith (M.unionWith (+)) purchases
   
--- | Converts a csv line into a UserRatings tuple
+-- | Converts a CSV line into a UserRatings tuple
 parseToTuple :: Record -> UserRatings
 parseToTuple record = let
   read' r = maybe (-1) id (readMaybe r :: Maybe Int)
   name = read' $ head record 
-  items = map read' $ splitOn "|" $ head $ tail record
-  items' = M.fromListWith (+) $ map (\k -> (k,1.0)) items
-  in (name, items')     --FIX THIS IS STUPD
+  transaction = map read' $ splitOn "|" $ head $ tail record
+  items = M.fromListWith (+) $ map (\k -> (k,1.0)) transaction
+  in (name, items)
 
--- | Conversion utility. Generates unique user-item-quantity tuples.
+-- | Conversion utility generating unique user-item-quantity tuples
 convert :: FilePath -> FilePath -> IO ()
 convert inFilePath outFilePath = let
   header = ["customerId", "itemId", "quantity"]

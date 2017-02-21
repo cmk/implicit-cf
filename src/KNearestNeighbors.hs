@@ -1,4 +1,4 @@
-module KNearestNeighbors (recommend) where 
+module KNearestNeighbors where 
 
 import Data.List
 import Data.Maybe
@@ -25,8 +25,7 @@ jaccard l r = let
     in num / denom  
   in dist lr rr 
         
--- | Compute the Jaccard distances for the given samples from the user,
--- then sort by closest
+-- | Compute the Jaccard distances from the user, then sort by closest
 sortNeighbors :: [UserRatings] -> UserRatings -> [(Double,UserRatings)]
 sortNeighbors s u = let
   getDist sample = (jaccard u sample, sample)
@@ -48,7 +47,6 @@ getRatings k users u = let
   ratings = neighbors >>= uncurry convert
   compare (a,_) (a',_) = a == a'
   in nubBy compare ratings
-
 
 -- | Return the top 10 recommendations for each user in a list
 recommend :: [UserRatings] -> [User] -> [[Item]]

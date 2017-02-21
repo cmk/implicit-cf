@@ -15,9 +15,26 @@ build-type:          Simple
 -- extra-source-files:  
 cabal-version:       >=1.10
 
-executable recommender
-  main-is:             Main.hs	
-  other-modules:       Bias, KNearestNeighbors, MatrixFactorization, Types
-  build-depends:       base, cassava, vector, bytestring, matrix, containers, multimap, split, csv, sgd, random, mtl
-  hs-source-dirs:      src
+                     
+library
+  hs-source-dirs:      src	
+  exposed-modules:     KNearestNeighbors, MatrixFactorization, Bias, Types
+  build-depends:       base, vector, matrix, containers, multimap, sgd, random
   default-language:    Haskell2010
+
+test-suite recommender-test
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  build-depends:       base,
+                       split, 
+                       csv,
+                       multimap,
+                       vector,
+                       hspec,
+                       containers,
+                       recommender
+  ghc-options:         -threaded -rtsopts
+  type:                exitcode-stdio-1.0
+  default-language:    Haskell2010
+
+

@@ -1,6 +1,5 @@
-module MatrixFactorization where --(model, recommend, predict) 
+module MatrixFactorization (model, recommend, dataSet) where 
 
-import Control.Applicative (liftA2)
 import Control.Monad (replicateM)
 import Data.List (foldl',sort)
 import Numeric (showFFloat)
@@ -21,12 +20,11 @@ import Types
 type Matrices = U.Vector Double -- factor matrices P, Q stored in row-major order
 
 
-
 rate = 0.1 -- Initial learning rate. 
 alpha = 2.0 -- Confidence scaling factor, see Hu et al section 4. Note that SGD requires a much smaller alpha than ALS.
 lambda = 0.4 -- Tikhonov regularization paramater
 
-nr_iter = 30
+nr_iter = 80
 nFeatures = 10
 nUsers = 28606 -- User numbers are mapped directly to indices for now. Actual number of users is 24429.
 nItems = 300
@@ -44,24 +42,21 @@ recommend matrices users = let
     in map (\(_,x) -> x-1) $ take 10 $ reverse $ sort $ userRecs
   in map makeRec users
   
-
- 
 -- | Computes the latent factor vectors for matrix factorixation
 model :: [UserRatings] -> IO Matrices
 model trainData = do
   let input = dataSet trainData
       n = (nFeatures * nUsers) + (nFeatures * nItems)
-  -- initialize to random floats in [0,1]
+  -- initialize to random floats in the interval [0.05,0.15]
   matrices <- fmap U.fromList $ replicateM n $ randomRIO (0.05,0.15)
   D.withVect (V.toList input) (runSGD matrices input)
 
--- | 
+-- | Conversion utility generating unique user-item-quantity tuples
 dataSet :: [UserRatings] -> DataSet
 dataSet users = let
   tuple a (b,c) = (a,b,c)
   dataPoints (user,ratings) = map (tuple user) $ M.toList ratings
   in V.fromList $ users >>= dataPoints
-
 
 -- | SGD optimizer
 runSGD :: Matrices -> DataSet -> D.Dataset DataPoint -> IO Matrices
@@ -73,9 +68,9 @@ runSGD matrices all d = do
 -- | Notification run by the SGD function 
 notify :: BiasModel -> DataSet -> Matrices -> Int -> IO ()
 notify biasModel dataSet matrices k = putStr ("\n" ++
-                                          (show k) ++
-                                          ("\t") ++
-                                          (show (objective biasModel matrices dataSet)))
+                                             (show k) ++
+                                             ("\t") ++
+                                             (show (objective biasModel matrices dataSet)))
 
 -- | Overall objective function that we are trying to minimize
 objective :: BiasModel -> Matrices -> DataSet -> Double
@@ -83,15 +78,11 @@ objective biasModel matrices dataSet = let
   err2 x = (errorAt x biasModel matrices)**2
   in V.sum (V.map (\x -> err2 x) dataSet)
 
-
 -- | Gradient descent step
 grad :: BiasModel -> Matrices -> DataPoint -> S.Grad
 grad biasModel matrices dataPoint = let
-  gradient = liftA2 (++)
-                    (gradP dataPoint biasModel)
-                    (gradQ dataPoint biasModel)
-                    matrices
-  in S.fromList gradient         
+  gradient = (++) <$> (gradP dataPoint biasModel) <*> (gradQ dataPoint biasModel)
+  in S.fromList $ gradient matrices     
 
 -- | Computes the gradient step for the item component
 gradP :: DataPoint -> BiasModel -> Matrices -> [(Int, Double)]  
@@ -104,9 +95,8 @@ gradP dataPoint biasModel matrices  = let
   in do
     f <- fRange
     let idx = f + item * nFeatures 
-        update = liftA2 partial (itemIdx item f) (userIdx user f) matrices
-    return (idx, update)
-
+        update = partial <$> (itemIdx item f) <*> (userIdx user f)
+    return (idx, update matrices)
 
 -- | Computes the gradient step for the user component
 gradQ :: DataPoint -> BiasModel -> Matrices -> [(Int, Double)]
@@ -120,29 +110,25 @@ gradQ dataPoint biasModel matrices = let
     f <- fRange
     let offset = nItems * nFeatures
         idx = offset + f + item * nFeatures 
-        update = liftA2 partial (itemIdx item f) (userIdx user f) matrices
-    return (idx, update)
-
+        update = partial <$> (itemIdx item f) <*> (userIdx user f)
+    return (idx, update matrices)
 
 -- | Computes the error for user, item, rating with a given latent factor vector
 errorAt :: DataPoint -> BiasModel -> Matrices -> Double
 errorAt dataPoint biasModel matrices = let
   (user,item,rating) = dataPoint
-  bias = B.predict biasModel user item
-  dotProd f = return $ liftA2 (*) (itemIdx item f) (userIdx user f) matrices
-  prediction = sum $ fRange >>= dotProd
-  in preference rating - bias - prediction 
-
+  prediction = predict dataPoint biasModel matrices
+  in preference rating - prediction
    
 -- | Computes a prediction for the rating of user u on item i 
-predict :: BiasModel -> Matrices -> User -> Item -> Double
-predict biasModel matrices user item = let
+predict :: DataPoint -> BiasModel -> Matrices -> Double
+predict dataPoint biasModel matrices = let
+  (user,item,rating) = dataPoint
   bias = B.predict biasModel user item
-  dotProd f = return $ liftA2 (*) (itemIdx item f) (userIdx user f) matrices
+  dotProd f = return $ (*) <$> (itemIdx item f) <*> (userIdx user f) $ matrices
   prediction = sum $ fRange >>= dotProd
   in bias + prediction
 
-  
 -- | Retrieve the index of an latent item feature in the parameter vector
 itemIdx :: Int -> Int -> Matrices -> Double
 itemIdx x f m = let
@@ -156,7 +142,6 @@ userIdx x f m = let
   idx = offset + f + x * nFeatures 
   in m U.! idx
 
-
 -- | Confidence rating in our prediction that a user rates an item highly.
 -- See Hu et. al. "Collaborative Filtering for Implicit Feedback Datasets", section 4     
 confidence :: Rating -> Double
@@ -168,7 +153,6 @@ confidence rating = let
 preference :: Rating -> Double
 preference rating | rating > 0.0 = 1.0
                   | otherwise = 0.0
-
 
 -- | Retrieve factor matrices P,Q and full matrix R = Q*P^t, for debugging only
 getP matrices = let
