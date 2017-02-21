@@ -118,11 +118,3 @@ toRecords :: DataSet -> [Record]
 toRecords dataSet = let
   toList (a,b,c) = [a,b,round c] 
   in V.toList $ (fmap . fmap) show $ fmap toList dataSet    
-
-getParams :: DataSet -> (Int, Int)
-getParams dataSet = let
-  max1 (a,_,_) (a',_,_) = compare a a'
-  max2 (_,b,_) (_,b',_) = compare b b'
-  (maxUser,_,_) = maximumBy max1 dataSet
-  (_,maxItem,_) = maximumBy max2 dataSet
-  in (maxUser+1, maxItem+1)
