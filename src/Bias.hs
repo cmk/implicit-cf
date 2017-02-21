@@ -31,7 +31,7 @@ model vec =  (mu, urm, ium, uirmap)
                 
 -- | Predicts the rating for user us and item it. takes model of Bias module
 predict :: BiasModel -> User -> Item -> Double
-predict biasModel us it = mu + (deviation mu urm us) + bi
+predict biasModel us it = 0.0 --mu + (deviation mu urm us) + bi
   where (mu,urm,ium,uirm) = biasModel
         dev = map (\x -> rating x it - (deviation mu urm x) - mu) users
         s = sum $ dev 

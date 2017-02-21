@@ -14,11 +14,7 @@ type UserItemRatingMap = M.Map User ItemRatingMap
 
 type DataPoint = (User,Item,Rating)
 type DataSet = V.Vector DataPoint
-type BiasModel = (Rating,              --avg rating,
-                  MM.MultiMap User Rating,  --keys are users. values are ratings of those users
-                  MM.MultiMap Item User, --keys are items. values are users who rated that item
-                  UserItemRatingMap)   --map contains all ratings to user item keys
-
-
-
-
+type BiasModel = (Rating,
+                  MM.MultiMap User Rating,
+                  MM.MultiMap Item User,
+                  UserItemRatingMap)
